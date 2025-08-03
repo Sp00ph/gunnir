@@ -6,25 +6,6 @@ use std::{
 
 use gunnir_common::*;
 
-fn pext(n: u64, mask: u64) -> u64 {
-    #[cfg(target_feature = "bmi2")]
-    return unsafe { std::arch::x86_64::_pext_u64(n, mask) };
-    #[cfg(not(target_feature = "bmi2"))]
-    {
-        let mut result = 0;
-        let mut mask = mask;
-
-        for k in 0..mask.count_ones() {
-            let j = mask.trailing_zeros();
-            result |= ((n >> j) & 1) << k;
-
-            mask ^= 1 << j;
-        }
-
-        result
-    }
-}
-
 fn pdep(n: u64, mask: u64) -> u64 {
     #[cfg(target_feature = "bmi2")]
     return unsafe { std::arch::x86_64::_pdep_u64(n, mask) };
@@ -376,7 +357,7 @@ mod bmi2 {
         }
 
         let table_size = bishop_offsets[64];
-        let mut table = vec![0u16; table_size];
+        let mut table = vec![0u64; table_size];
 
         for i in 0..64 {
             let sq = Square::from_idx(i as u8);
@@ -389,7 +370,7 @@ mod bmi2 {
                     let blockers = pdep(j as u64, mask.0);
                     let moves = rook_moves(sq, blockers);
 
-                    table[rook_offsets[i] + j] = pext(moves.0, rook_rays(sq).0) as u16;
+                    table[rook_offsets[i] + j] = moves.0;
                 }
             }
 
@@ -401,7 +382,7 @@ mod bmi2 {
                     let blockers = pdep(j as u64, mask.0);
                     let moves = bishop_moves(sq, blockers);
 
-                    table[bishop_offsets[i] + j] = pext(moves.0, bishop_rays(sq).0) as u16;
+                    table[bishop_offsets[i] + j] = moves.0;
                 }
             }
         }
@@ -409,11 +390,10 @@ mod bmi2 {
         let preamble = stringify!(
             use crate::*;
 
-            #[repr(align(32))]
+            #[repr(align(16))]
             struct Magic {
                 pext: u64,
-                pdep: u64,
-                data: *const u16,
+                data: *const u64,
             }
             unsafe impl Sync for Magic {}
 
@@ -422,15 +402,12 @@ mod bmi2 {
                 let sq_idx = sq.idx() as usize;
 
                 Bitboard(unsafe {
-                    core::arch::x86_64::_pdep_u64(
-                        *ROOK_MAGICS.0[sq_idx]
-                            .data
-                            .add(core::arch::x86_64::_pext_u64(
-                                blockers.0,
-                                ROOK_MAGICS.0[sq_idx].pext,
-                            ) as usize) as u64,
-                        ROOK_MAGICS.0[sq_idx].pdep,
-                    )
+                    *ROOK_MAGICS.0[sq_idx]
+                        .data
+                        .add(
+                            core::arch::x86_64::_pext_u64(blockers.0, ROOK_MAGICS.0[sq_idx].pext)
+                                as usize,
+                        )
                 })
             }
 
@@ -439,15 +416,12 @@ mod bmi2 {
                 let sq_idx = sq.idx() as usize;
 
                 Bitboard(unsafe {
-                    core::arch::x86_64::_pdep_u64(
-                        *BISHOP_MAGICS.0[sq_idx]
-                            .data
-                            .add(core::arch::x86_64::_pext_u64(
-                                blockers.0,
-                                BISHOP_MAGICS.0[sq_idx].pext,
-                            ) as usize) as u64,
-                        BISHOP_MAGICS.0[sq_idx].pdep,
-                    )
+                    *BISHOP_MAGICS.0[sq_idx]
+                        .data
+                        .add(
+                            core::arch::x86_64::_pext_u64(blockers.0, BISHOP_MAGICS.0[sq_idx].pext)
+                                as usize,
+                        )
                 })
             }
         );
@@ -463,10 +437,8 @@ mod bmi2 {
             let mask = rook_mask(sq);
             writeln!(
                 w,
-                "    Magic {{ pext: {:#018x}, pdep: {:#018x}, data: ATTACK_TABLE.0.as_ptr().add({:#07x}) }},",
-                mask.0,
-                rook_rays(sq).0,
-                o
+                "    Magic {{ pext: {:#018x}, data: ATTACK_TABLE.0.as_ptr().add({:#07x}) }},",
+                mask.0, o
             )?;
         }
         writeln!(w, "]) }};\n\n")?;
@@ -480,22 +452,20 @@ mod bmi2 {
             let mask = bishop_mask(sq);
             writeln!(
                 w,
-                "    Magic {{ pext: {:#018x}, pdep: {:#018x}, data: ATTACK_TABLE.0.as_ptr().add({:#07x}) }},",
-                mask.0,
-                bishop_rays(sq).0,
-                o
+                "    Magic {{ pext: {:#018x}, data: ATTACK_TABLE.0.as_ptr().add({:#07x}) }},",
+                mask.0, o
             )?;
         }
         writeln!(w, "]) }};\n\n")?;
 
         writeln!(
             w,
-            "#[rustfmt::skip]\nstatic ATTACK_TABLE: CachePadded<[u16; {table_size}]> = CachePadded(["
+            "#[rustfmt::skip]\nstatic ATTACK_TABLE: CachePadded<[u64; {table_size}]> = CachePadded(["
         )?;
-        for ch in table.chunks(16) {
+        for ch in table.chunks(8) {
             write!(w, "    ")?;
             for i in ch {
-                write!(w, "{i:#06x}, ")?;
+                write!(w, "{i:#018x}, ")?;
             }
             writeln!(w)?;
         }
@@ -519,12 +489,16 @@ fn generate_perft960_tests() {
         let expected: Vec<_> = parts.map(|s| s.trim()).collect();
         let expected = expected.join(", ");
 
-        writeln!(writer, "
+        writeln!(
+            writer,
+            "
         perft_test!(
             perft960_p{number}: {fen:?};
             {expected},
         );
-        ").unwrap();
+        "
+        )
+        .unwrap();
     }
 }
 
