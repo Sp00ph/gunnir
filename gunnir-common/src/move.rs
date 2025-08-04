@@ -1,4 +1,4 @@
-use std::num::NonZeroU16;
+use std::{fmt, num::NonZeroU16};
 
 use crate::*;
 
@@ -83,6 +83,39 @@ impl Move {
     /// doesn't promote, the return value is arbitrary.
     pub const fn promotes_to_unchecked(self) -> PieceType {
         PieceType::from_idx((self.0.get() >> 14) as u8 & 0x3)
+    }
+
+    #[inline]
+    pub const fn to_bits(self) -> u16 {
+        self.0.get()
+    }
+
+    #[inline]
+    /// Should only be called with an argument that was previously returned from a `mov.to_bits()` call.
+    pub const fn from_bits(n: u16) -> Self {
+        Self(NonZeroU16::new(n).expect("Illegal move!"))
+    }
+}
+
+impl fmt::Debug for Move {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (from, to, flag, pt) = (
+            self.from(),
+            self.to(),
+            self.move_flag(),
+            self.promotes_to_unchecked(),
+        );
+
+        write!(f, "{from:?} -> {to:?}")?;
+
+        match flag {
+            MoveFlag::None => {}
+            MoveFlag::Castle => f.write_str(" (Castle)")?,
+            MoveFlag::EnPassant => f.write_str(" (En Passant)")?,
+            MoveFlag::Promotion => write!(f, " (Promote to {pt:?})")?,
+        }
+
+        Ok(())
     }
 }
 

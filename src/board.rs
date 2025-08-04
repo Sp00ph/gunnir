@@ -11,7 +11,7 @@ pub struct CastlingRights {
     pub long: Option<File>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Board {
     /// For each piece type we store a bitboard of all pieces of that type. Note that these bitboards
     /// aren't aware of a piece's color.
@@ -246,8 +246,12 @@ impl Board {
         self.calc_pinned_and_checkers();
     }
 
+    pub fn start_pos() -> Self {
+        Self::read_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap()
+    }
+
     pub fn read_fen(fen: &str) -> Option<Self> {
-        let mut parts = fen.split(' ');
+        let mut parts = fen.trim().split(' ');
 
         let pieces = parts.next()?;
         let stm = parts.next()?;
@@ -255,6 +259,9 @@ impl Board {
         let epts = parts.next()?;
         let hmc = parts.next()?;
         let fmc = parts.next()?;
+        if parts.next().is_some() {
+            return None;
+        }
 
         let mut board = Board {
             pieces: Default::default(),
@@ -464,7 +471,7 @@ impl Board {
             print!("║");
             for &file in File::ALL {
                 let sq = Square::from_file_rank(file, rank);
-                let mut ch = match self.mailbox[sq] {
+                let mut ch = match self.piece_on(sq) {
                     None => ' ',
                     Some(PieceType::Pawn) => 'P',
                     Some(PieceType::Knight) => 'N',

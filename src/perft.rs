@@ -14,7 +14,7 @@ fn perft(board: &Board, depth: u8) -> u64 {
     } else {
         board.gen_moves(|moves| {
             for mv in moves {
-                let mut board = board.clone();
+                let mut board = *board;
                 board.make_move(mv);
 
                 nodes += perft(&board, depth - 1);
