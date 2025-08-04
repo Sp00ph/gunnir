@@ -11,7 +11,7 @@ fn main() {
 
     println!("{:?}", board.castles);
 
-    board.print();
+    board.print(false);
 
     let mut moves = vec![];
     board.gen_moves(|pm| {
@@ -32,6 +32,6 @@ fn main() {
 
         let mut board = board.clone();
         board.make_move(mov);
-        board.print();
+        board.print(false);
     }
 }

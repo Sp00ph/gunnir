@@ -42,7 +42,6 @@ impl fmt::Debug for PieceType {
 }
 
 define_enum!(
-    #[derive(Debug)]
     pub enum Color {
         White,
         Black,
@@ -59,6 +58,20 @@ impl Color {
     /// Returns 1 for white, -1 for black
     pub const fn signum(self) -> i8 {
         1 - 2 * self.idx() as i8
+    }
+
+    #[inline]
+    pub const fn to_char(self) -> char {
+        match self {
+            Color::White => 'w',
+            Color::Black => 'b',
+        }
+    }
+}
+
+impl fmt::Debug for Color {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt::Write::write_char(f, self.to_char())
     }
 }
 

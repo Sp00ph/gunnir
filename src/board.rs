@@ -202,7 +202,7 @@ impl Board {
                 self.toggle_square(to, self.stm, PieceType::King);
                 self.toggle_square(rook_from, self.stm, PieceType::Rook);
                 self.toggle_square(rook_to, self.stm, PieceType::Rook);
-                
+
                 // Update the mailbox. We first clear both, then set both. This is to ensure
                 // that even if one piece starts on the square that the other moves to, it
                 // doesn't accidentally leave a mailbox entry empty.
@@ -394,13 +394,74 @@ impl Board {
         Some(board)
     }
 
-    pub fn print(&self) {
+    pub fn fen(&self, chess960: bool) -> String {
         use std::fmt::Write;
-
-        println!("+---+---+---+---+---+---+---+---+");
+        let mut res = String::new();
 
         for &rank in Rank::ALL.iter().rev() {
-            print!("|");
+            let mut gap = 0;
+
+            for &file in File::ALL {
+                let sq = Square::from_file_rank(file, rank);
+                if let Some(pt) = self.piece_on(sq) {
+                    if gap != 0 {
+                        write!(res, "{gap}").unwrap();
+                        gap = 0;
+                    }
+                    let color = Color::from_idx(self.occupied[Color::Black].contains(sq) as u8);
+                    res.push(pt.to_char(color));
+                } else {
+                    gap += 1;
+                }
+            }
+            if gap != 0 {
+                write!(res, "{gap}").unwrap();
+            }
+            res.push(if rank != Rank::R1 { '/' } else { ' ' });
+        }
+
+        write!(res, "{:?} ", self.stm).unwrap();
+
+        let mut castles = String::new();
+        if let Some(f) = self.castles[Color::White].short {
+            let ch = if !chess960 { 'K' } else { f.to_char() };
+            castles.push(ch);
+        }
+        if let Some(f) = self.castles[Color::White].long {
+            let ch = if !chess960 { 'Q' } else { f.to_char() };
+            castles.push(ch);
+        }
+        if let Some(f) = self.castles[Color::Black].short {
+            let ch = if !chess960 { 'K' } else { f.to_char() };
+            castles.push(ch.to_ascii_lowercase());
+        }
+        if let Some(f) = self.castles[Color::Black].long {
+            let ch = if !chess960 { 'Q' } else { f.to_char() };
+            castles.push(ch.to_ascii_lowercase());
+        }
+
+        if castles.is_empty() {
+            castles.push('-');
+        }
+
+        write!(res, "{castles} ").unwrap();
+
+        let ep = if let Some(f) = self.en_passant {
+            format!("{:#?}{:?}", f, Rank::R6.relative_to(self.stm))
+        } else {
+            "-".to_string()
+        };
+
+        write!(res, "{ep} {} {}", self.halfmove_clock, self.fullmove_count).unwrap();
+
+        res
+    }
+
+    pub fn print(&self, chess960: bool) {
+        println!("╔═══╤═══╤═══╤═══╤═══╤═══╤═══╤═══╗");
+
+        for &rank in Rank::ALL.iter().rev() {
+            print!("║");
             for &file in File::ALL {
                 let sq = Square::from_file_rank(file, rank);
                 let mut ch = match self.mailbox[sq] {
@@ -417,41 +478,19 @@ impl Board {
                     ch = ch.to_ascii_lowercase();
                 }
 
-                print!(" {ch} |");
+                print!(" {ch} ");
+                print!("{}", if file == File::H { '║' } else { '│' });
             }
-            println!(" {rank:?}\n+---+---+---+---+---+---+---+---+");
+            if rank != Rank::R1 {
+                println!(" {rank:?}\n╟───┼───┼───┼───┼───┼───┼───┼───╢");
+            }
         }
+        println!(" {:?}\n╚═══╧═══╧═══╧═══╧═══╧═══╧═══╧═══╝", Rank::R1);
+
         for file in File::ALL {
             print!("  {file:?} ");
         }
 
-        println!(
-            "\n\nHalf-move clock: {}, Full-move count: {}",
-            self.halfmove_clock, self.fullmove_count
-        );
-        let ep = match self.en_passant {
-            Some(f) => format!("{f:?}"),
-            None => "-".into(),
-        };
-
-        let mut castles = String::new();
-        if let Some(f) = self.castles[Color::White].short {
-            write!(castles, "{f:?}").unwrap();
-        }
-        if let Some(f) = self.castles[Color::White].long {
-            write!(castles, "{f:?}").unwrap();
-        }
-        if let Some(f) = self.castles[Color::Black].short {
-            write!(castles, "{f:#?}").unwrap();
-        }
-        if let Some(f) = self.castles[Color::Black].long {
-            write!(castles, "{f:#?}").unwrap();
-        }
-
-        if castles.is_empty() {
-            castles.push('-');
-        }
-
-        println!("En passant: {ep}, Castling rights: {castles}");
+        println!("\n\nFEN: {}", self.fen(chess960));
     }
 }

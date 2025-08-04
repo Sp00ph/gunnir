@@ -25,6 +25,11 @@ impl File {
     pub const fn offset(self, df: i8) -> Self {
         self.try_offset(df).expect("Invalid file offset")
     }
+
+    #[inline]
+    pub const fn to_char(self) -> char {
+        (b'A' + self.idx()) as char
+    }
 }
 
 impl fmt::Debug for File {
