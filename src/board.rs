@@ -1,3 +1,5 @@
+use std::mem;
+
 use crate::*;
 use enum_map::EnumMap;
 
@@ -42,6 +44,8 @@ pub struct Board {
     pub fullmove_count: u32,
     /// The side to make the next move.
     pub stm: Color,
+    /// Zobrist hash of the board
+    pub hash: u64,
 }
 
 impl Board {
@@ -82,9 +86,38 @@ impl Board {
     }
 
     #[inline]
-    pub fn toggle_square(&mut self, sq: Square, color: Color, pt: PieceType) {
+    fn toggle_square(&mut self, sq: Square, color: Color, pt: PieceType) {
         self.pieces[pt] ^= sq;
         self.occupied[color] ^= sq;
+
+        self.hash ^= ZOBRIST.piece(sq, pt, color);
+    }
+
+    #[inline]
+    fn set_en_passant(&mut self, f: Option<File>) {
+        if let Some(old) = mem::replace(&mut self.en_passant, f) {
+            self.hash ^= ZOBRIST.en_passant(old);
+        }
+        if let Some(new) = f {
+            self.hash ^= ZOBRIST.en_passant(new);
+        }
+    }
+
+    #[inline]
+    fn set_castles(&mut self, color: Color, castles: Option<File>, short: bool) {
+        let rights = if short {
+            &mut self.castles[color].short
+        } else {
+            &mut self.castles[color].long
+        };
+
+        if let Some(old) = mem::replace(rights, castles) {
+            self.hash ^= ZOBRIST.castles(old, color);
+        }
+
+        if let Some(new) = castles {
+            self.hash ^= ZOBRIST.castles(new, color);
+        }
     }
 
     /// Makes a move on the current board. Assumes the move is legal for the current position.
@@ -104,7 +137,7 @@ impl Board {
         self.halfmove_clock += 1;
         self.fullmove_count += (self.stm == Color::Black) as u32;
 
-        self.en_passant = None;
+        self.set_en_passant(None);
 
         let piece = self.piece_on(from).expect("Move from empty square");
         let victim = self.piece_on(to);
@@ -128,11 +161,10 @@ impl Board {
             // If we take a rook, we must check if it still has its castling rights, and remove them.
             let their_back_rank = Rank::R8.relative_to(self.stm);
             if victim == PieceType::Rook && to.rank() == their_back_rank {
-                let castles = &mut self.castles[!self.stm];
-                if castles.short == Some(to.file()) {
-                    castles.short = None;
-                } else if castles.long == Some(to.file()) {
-                    castles.long = None;
+                if self.castles[!self.stm].short == Some(to.file()) {
+                    self.set_castles(!self.stm, None, true);
+                } else if self.castles[!self.stm].long == Some(to.file()) {
+                    self.set_castles(!self.stm, None, false);
                 }
             }
         }
@@ -151,17 +183,17 @@ impl Board {
                 match piece {
                     PieceType::King => {
                         // Moving the king removes all castling rights
-                        self.castles[self.stm] = CastlingRights::default();
+                        self.set_castles(self.stm, None, true);
+                        self.set_castles(self.stm, None, false);
                     }
                     PieceType::Rook => {
                         // If we move a rook, it loses any castling rights it may have had.
                         let back_rank = Rank::R1.relative_to(self.stm);
                         if from.rank() == back_rank {
-                            let castles = &mut self.castles[self.stm];
-                            if castles.short == Some(from.file()) {
-                                castles.short = None;
-                            } else if castles.long == Some(from.file()) {
-                                castles.long = None;
+                            if self.castles[self.stm].short == Some(from.file()) {
+                                self.set_castles(self.stm, None, true);
+                            } else if self.castles[self.stm].long == Some(from.file()) {
+                                self.set_castles(self.stm, None, false);
                             }
                         }
                     }
@@ -171,7 +203,7 @@ impl Board {
                             debug_assert_eq!(to.file(), from.file());
                             debug_assert_eq!(from.rank(), Rank::R2.relative_to(self.stm));
 
-                            self.en_passant = Some(to.file());
+                            self.set_en_passant(Some(to.file()));
                         }
                     }
                     _ => {}
@@ -211,7 +243,8 @@ impl Board {
                 self.mailbox[to] = Some(PieceType::King);
                 self.mailbox[rook_to] = Some(PieceType::Rook);
 
-                self.castles[self.stm] = CastlingRights::default();
+                self.set_castles(self.stm, None, true);
+                self.set_castles(self.stm, None, false);
             }
             MoveFlag::EnPassant => {
                 let target_square = Square::from_file_rank(to.file(), from.rank());
@@ -243,6 +276,7 @@ impl Board {
         }
 
         self.stm = !self.stm;
+        self.hash ^= ZOBRIST.black_to_move;
         self.calc_pinned_and_checkers();
     }
 
@@ -274,6 +308,7 @@ impl Board {
             halfmove_clock: 0,
             fullmove_count: 0,
             stm: Color::White,
+            hash: 0,
         };
 
         let mut rank = 8u8;
@@ -306,8 +341,7 @@ impl Board {
                 let color = Color::from_idx(ch.is_ascii_lowercase() as u8);
 
                 let sq = Square::from_file_rank(File::from_idx(file), Rank::from_idx(rank));
-                board.pieces[pt] |= sq;
-                board.occupied[color] |= sq;
+                board.toggle_square(sq, color, pt);
                 if board.mailbox[sq].replace(pt).is_some() {
                     return None;
                 }
@@ -332,6 +366,10 @@ impl Board {
             "b" => Color::Black,
             _ => return None,
         };
+
+        if board.stm == Color::Black {
+            board.hash ^= ZOBRIST.black_to_move;
+        }
 
         if castles != "-" {
             for ch in castles.bytes() {
@@ -365,13 +403,7 @@ impl Board {
                     return None;
                 }
 
-                if file > king_sq.file() {
-                    if board.castles[color].short.replace(file).is_some() {
-                        return None;
-                    }
-                } else if board.castles[color].long.replace(file).is_some() {
-                    return None;
-                }
+                board.set_castles(color, Some(file), file > king_sq.file());
             }
         }
 
@@ -386,7 +418,7 @@ impl Board {
                 return None;
             }
 
-            board.en_passant = Some(file);
+            board.set_en_passant(Some(file));
         }
 
         board.halfmove_clock = hmc.parse().ok()?;
@@ -499,5 +531,6 @@ impl Board {
         }
 
         println!("\n\nFEN: {}", self.fen(chess960));
+        println!("Zobrist key: {:#018x}", self.hash)
     }
 }
