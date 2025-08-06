@@ -504,7 +504,7 @@ fn generate_perft960_tests() {
 
 fn main() {
     println!("cargo::rerun-if-changed=build.rs");
-    println!("cargo::rerun-if-changed=perft960.rs");
+    println!("cargo::rerun-if-changed=perft960.txt");
     println!("cargo::rerun-if-env-changed=CARGO_CFG_TARGET_FEATURE");
 
     let has_bmi2 = env::var("CARGO_CFG_TARGET_FEATURE").is_ok_and(|s| s.contains("bmi2"));
