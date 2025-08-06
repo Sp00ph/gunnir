@@ -4,16 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-enum-map = "2.7.3"
-gunnir-common = { path = "gunnir-common" }
-rand = { version = "0.9.2", features = ["small_rng"] }
-
-[features]
-perft-all-960 = []
-
-[build-dependencies]
-gunnir-common = { path = "gunnir-common" }
+gunnir-board = { path = "gunnir-board" }
 
 [workspace]
 resolver = "3"
-members = ["gunnir-common"]
+members = ["gunnir-board", "gunnir-common"]

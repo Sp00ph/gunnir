@@ -1,0 +1,14 @@
+[package]
+name = "gunnir-board"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+enum-map = "2.7.3"
+gunnir-common = { path = "../gunnir-common" }
+
+[features]
+perft-all-960 = []
+
+[build-dependencies]
+gunnir-common = { path = "../gunnir-common" }

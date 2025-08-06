@@ -8,3 +8,6 @@ pub mod zobrist;
 pub use board::*;
 pub use slider_moves::*;
 pub use zobrist::*;
+
+#[cfg(test)]
+mod perft;
