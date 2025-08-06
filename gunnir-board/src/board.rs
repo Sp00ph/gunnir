@@ -203,7 +203,26 @@ impl Board {
                             debug_assert_eq!(to.file(), from.file());
                             debug_assert_eq!(from.rank(), Rank::R2.relative_to(self.stm));
 
-                            self.set_en_passant(Some(to.file()));
+                            // We actually only care about the en passant file if the opponent
+                            // has a pawn that may take our pushed pawn on their next turn.
+                            // Otherwise, just omitting the en-passant file cannot have an
+                            // effect on the game state. This way, we only include the en-passant
+                            // information in the zobrist hash when it is relevant, hopefully
+                            // increasing the accuracy of any kinds of transposition tables
+                            // using the hash.
+                            // Note that this may result in a technically incorrect FEN string
+                            // being printed, but it can't affect the next legal moves so we don't
+                            // care.
+                            if self
+                                .colored_pieces(PieceType::Pawn, !self.stm)
+                                .intersect(pawn_attacks(
+                                    from.offset(0, self.stm.signum()),
+                                    self.stm,
+                                ))
+                                .is_non_empty()
+                            {
+                                self.set_en_passant(Some(to.file()));
+                            }
                         }
                     }
                     _ => {}
@@ -532,5 +551,63 @@ impl Board {
 
         println!("\n\nFEN: {}", self.fen(chess960));
         println!("Zobrist key: {:#018x}", self.hash)
+    }
+
+    #[inline]
+    pub fn parse_move(&self, lan: &str, chess960: bool) -> Option<Move> {
+        if !(4..=5).contains(&lan.len()) {
+            return None;
+        }
+
+        let from = Square::parse(&lan[..2])?;
+        let to = Square::parse(&lan[2..4])?;
+        let promote_to = match lan.as_bytes().get(4) {
+            Some(&b) => Some(PieceType::from_char(b as char)?),
+            None => None,
+        };
+
+        if let Some(pt) = promote_to {
+            return Some(Move::new_promotion(from, to, pt));
+        }
+
+        let castle_file = 'castle: {
+            if self.piece_on(from) != Some(PieceType::King) {
+                break 'castle None;
+            }
+
+            if !chess960 && from.file() == File::E && [File::C, File::G].contains(&to.file()) {
+                break 'castle Some(to.file());
+            }
+
+            if chess960 && self.colored_piece_on(to, self.stm) == Some(PieceType::Rook) {
+                let is_short = to.file() > from.file();
+                let dst = if is_short { File::G } else { File::C };
+                break 'castle Some(dst);
+            }
+
+            None
+        };
+
+        if let Some(cf) = castle_file {
+            return Some(Move::new(
+                from,
+                Square::from_file_rank(cf, to.rank()),
+                MoveFlag::Castle,
+            ));
+        }
+
+        let is_ep = self.piece_on(from) == Some(PieceType::Pawn)
+            && from.rank() == Rank::R5.relative_to(self.stm)
+            && self.en_passant == Some(to.file());
+
+        Some(Move::new(
+            from,
+            to,
+            if is_ep {
+                MoveFlag::EnPassant
+            } else {
+                MoveFlag::None
+            },
+        ))
     }
 }

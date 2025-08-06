@@ -140,6 +140,19 @@ impl Square {
     pub const fn offset(self, df: i8, dr: i8) -> Self {
         self.try_offset(df, dr).expect("Invalid square offset")
     }
+
+    #[inline]
+    pub fn parse(s: &str) -> Option<Self> {
+        let &[f, r]: &[u8; 2] = s.as_bytes().try_into().ok()?;
+
+        match (f.to_ascii_lowercase(), r) {
+            (f @ b'a'..=b'h', b'1'..=b'8') => Some(Self::from_file_rank(
+                File::from_idx(f - b'a'),
+                Rank::from_idx(r - b'1'),
+            )),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Debug for Square {

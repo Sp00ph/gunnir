@@ -33,6 +33,18 @@ impl PieceType {
 
         ch
     }
+
+    pub fn from_char(ch: char) -> Option<Self> {
+        match ch.to_ascii_lowercase() {
+            'n' => Some(PieceType::Knight),
+            'b' => Some(PieceType::Bishop),
+            'r' => Some(PieceType::Rook),
+            'q' => Some(PieceType::Queen),
+            'p' => Some(PieceType::Pawn),
+            'k' => Some(PieceType::King),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Debug for PieceType {
