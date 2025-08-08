@@ -3,27 +3,6 @@ use crate::*;
 struct Xoshiro256PlusPlus([u64; 4]);
 
 impl Xoshiro256PlusPlus {
-    const fn new(k: &[u8; 32]) -> Self {
-        let mut a = [0u8; 8];
-        let (k0, k) = k.split_at(8);
-        let (k1, k) = k.split_at(8);
-        let (k2, k3) = k.split_at(8);
-
-        a.copy_from_slice(k0);
-        let s0 = u64::from_le_bytes(a);
-
-        a.copy_from_slice(k1);
-        let s1 = u64::from_le_bytes(a);
-
-        a.copy_from_slice(k2);
-        let s2 = u64::from_le_bytes(a);
-
-        a.copy_from_slice(k3);
-        let s3 = u64::from_le_bytes(a);
-
-        Self([s0, s1, s2, s3])
-    }
-
     const fn next(&mut self) -> u64 {
         let s = &mut self.0;
         let result = s[0].wrapping_add(s[3]).rotate_left(23).wrapping_add(s[0]);
@@ -73,7 +52,13 @@ pub static ZOBRIST: Zobrist = {
         en_passant: [0; File::COUNT],
     };
 
-    let mut rng = Xoshiro256PlusPlus::new(b"Zobrist Position Hasher RNG Seed");
+    // The values here are just some random 256 bit prime, in little endian 64-bit word order.
+    let mut rng = Xoshiro256PlusPlus([
+        0x41cdc3c49953801d,
+        0xe74586507f13b376,
+        0x95182cf17a6ad4ba,
+        0xbcecb7c084e5aa7a,
+    ]);
 
     let mut c = 0;
     while c < Color::COUNT {
