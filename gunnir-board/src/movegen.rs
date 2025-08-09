@@ -303,7 +303,7 @@ impl Board {
             let blockers = between(attacker, our_king) & occupied;
             match blockers.popcnt() {
                 0 => self.checkers |= attacker,
-                1 => self.pinned |= blockers,
+                1 => self.pinned |= blockers & self.occupied[self.stm],
                 _ => {}
             }
         }
